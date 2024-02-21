@@ -11,6 +11,8 @@
 - Асинхронная работа ⚙️
 - Поддержка прокси 🌐
 - Есть обработка каптчи 🔒
+- Использование аутентифицированной сессии в Selenium/Puppeteer и т.д. 🤖
+
 
 ## Быстрый старт
 
@@ -50,6 +52,96 @@ if __name__ == '__main__':
 ```
 
 В этом примере мы создаем асинхронное соединение с QIWI, аутентифицируемся и создаем счет на оплату в 100 рублей.
+
+## Использование аутентифицированной сессии
+
+### Selenium
+
+```python
+import asyncio
+from easyqiwi import EasyQiwiAuthCore
+from easyqiwi import AuthException
+from selenium import webdriver
+
+async def main():
+    phone = '+79228133736'
+    password = 'example'
+
+    qiwi = EasyQiwiAuthCore(phone, password)
+
+    try:
+        await qiwi.auth()
+    except AuthException as e:
+        pass
+
+    cookies = qiwi.cookies
+    auth_data = qiwi.auth_data
+
+    await qiwi.close()
+
+    driver = webdriver.Chrome()
+    driver.get('https://qiwi.com/')
+
+    driver.get('https://qiwi.com/')
+
+    for cookie in cookies:
+        driver.add_cookie({
+            'name': cookie['name'],
+            'value': cookie['value'],
+            'domain': cookie['domain']
+        })
+
+    driver.execute_script(f"localStorage.setItem('oauth-token-head', '{auth_data}');")
+
+    driver.get('https://qiwi.com/main')
+    await asyncio.sleep(100)
+    driver.quit()
+
+if __name__ == '__main__':
+    asyncio.run(main())
+```
+
+### Pyppeteer
+
+```python
+import asyncio
+from easyqiwi import EasyQiwiAuthCore
+from easyqiwi import AuthException
+from pyppeteer import launch
+
+async def main():
+    phone = '+79228133736'
+    password = 'example'
+
+    qiwi = EasyQiwiAuthCore(phone, password)
+
+    try:
+        await qiwi.auth()
+    except AuthException as e:
+        pass
+
+    cookies = qiwi.cookies
+    auth_data = qiwi.auth_data
+
+    await qiwi.close()
+
+    browser = await launch(headless=False)
+    pages = await browser.pages()
+    page = pages[0]
+
+    for cookie in cookies:
+        await page.setCookie({'name': cookie['name'], 'value': cookie['value'], 'domain': cookie['domain']})
+
+    await page.goto('https://qiwi.com/')
+    await page.evaluate(f"localStorage.setItem('oauth-token-head', '{auth_data}')")
+    await page.goto('https://qiwi.com/main')
+    await asyncio.sleep(100)
+    await browser.close()
+
+if __name__ == '__main__':
+    asyncio.run(main())
+```
+
 
 ## Установка
 
@@ -128,4 +220,56 @@ await qiwi.close()
 
 ```python
 proxy_tuple = await setup_proxy('socks5', 'proxy_ip', 'proxy_port', 'username', 'password')
+```
+
+## Другие методы API
+
+Помимо описанных выше, `easyqiwi` предоставляет доступ и к другим методам QIWI API:
+
+### Источники финансирования
+
+Получить список источников финансирования пользователя:
+
+```python
+sources = await qiwi_api.get_sources(person_id)
+```
+
+### Идентификация
+
+Получить данные по идентификации пользователя: 
+
+```python  
+identification = await qiwi_api.get_identification(person_id)
+```
+
+### Счета
+
+Получить количество неоплаченных счетов по их статусам:
+
+```python
+checkouts = await qiwi_api.get_checkouts() 
+```
+
+### Карты
+
+Получить данные по привязанным картам пользователя:
+
+```python
+cards = await qiwi_api.get_cards()
+``` 
+
+### Общая сумма платежей
+
+Получить общую сумму входящих/исходящих платежей за период:
+
+```python
+total_payments = await qiwi_api.get_total_payments(person_id, start_date, end_date)
+```
+
+### Транзакция
+
+Получить информацию по конкретной транзакции:
+
+```python
+transaction = await qiwi_api.get_transactions(transaction_id) 
 ```

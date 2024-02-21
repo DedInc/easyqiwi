@@ -1,6 +1,8 @@
 import asyncio
 import base64
 import httpx
+import datetime
+import json
 from httpx_socks import AsyncProxyTransport
 from urllib.parse import urlencode
 
@@ -53,6 +55,26 @@ class EasyQiwiAuthCore:
         })
         self.lock = asyncio.Lock()
 
+    def _set_auth_data_and_cookies(self, data, response):
+        auth_data = {
+            "expires_in": data['expires_in'],
+            "token_type": data['token_type'],
+            "access_token": data['access_token'],
+            "refresh_token": data['refresh_token'],
+            "created": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+            "client_id": "web-qw"
+        }
+
+        self.cookies = []
+        for name, value in response.cookies.items():
+            self.cookies.append({'name': name, 'value': value, 'domain': '.qiwi.com'})
+
+        self.auth_data = json.dumps(auth_data).replace(' ', '')
+        self.token_head = data['access_token']
+        self.refresh_token = data['refresh_token']
+        self.expires_in = int(data['expires_in']) - 300
+
+
     async def _authenticate(self, recaptcha):
         response = await self.session.post(
             f'{self.base_url}/oauth/token', 
@@ -77,6 +99,7 @@ class EasyQiwiAuthCore:
             f'{self.base_url}/oauth/token',
             data=response_data
         )
+
         data = response.json()
 
         if 'error' in data:            
@@ -85,9 +108,7 @@ class EasyQiwiAuthCore:
             else:
                 raise AuthException(str(data))
         try:
-            self.token_head = data['access_token']
-            self.refresh_token = data['refresh_token']
-            self.expires_in = int(data['expires_in']) - 300
+            self._set_auth_data_and_cookies(data, response)
             await self._fetch_api_token()
         except httpx.ProxyError as proxy_error:
             raise ProxyConnectionException(f"Failed to connect to the proxy: {proxy_error}") from proxy_error
@@ -119,10 +140,9 @@ class EasyQiwiAuthCore:
                     }
                 )
                 data = response.json()
-                self.token_head = data['access_token']
-                self.refresh_token = data['refresh_token']
-                self.expires_in = int(data['expires_in']) - 300                                
+                self._set_auth_data_and_cookies(data, response)
                 await self._fetch_api_token()
+
 
     async def auth(self, recaptcha=None):
         await self._authenticate(recaptcha)
